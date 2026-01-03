@@ -16,7 +16,7 @@ This repository contains tools for analyzing psychiatric session transcripts.
 
 ```bash
 # プロジェクトIDの設定
-gcloud config set project [YOUR_PROJECT_ID]
+gcloud config set project [studious-lyceum-483104-u8] # <<< ご自身のプロジェクトIDに置き換えてください
 
 # Cloud Run へのデプロイ
 gcloud run deploy psychiatric-analyzer \
