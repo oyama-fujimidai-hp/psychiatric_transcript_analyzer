@@ -1,43 +1,45 @@
-# Psychiatric Transcript Analyzer
+# 精神科文字起こし分析ツール (Psychiatric Transcript Analyzer)
 
-This repository contains tools for analyzing psychiatric session transcripts.
+精神科の外来診療やカウンセリングの文字起こし（逐語録）を、Google Gemini API を活用して迅速かつ客観的に分析するためのツールです。臨床現場での振り返りや、記録作成の補助を目的としています。
 
-## Google Cloud Run へのデプロイ方法
+## 🚀 主な機能
 
-このプロジェクトは Docker を使用して Google Cloud Run にデプロイできます。
+- **特定パターンの自動抽出**:
+    - **会話ラリー**: 医師と患者の間で、短い発話が5往復（計10ターン）以上続く活発なやり取り箇所を特定します。
+    - **患者の長い発話（モノローグ）**: 患者が実質的に連続して長く（目安として150文字以上、または5文以上）話し続けている箇所を特定します。
+- **2つの分析結果を並列表示**: 
+    - 一度の実行で2つの分析処理を並列で行い、結果を左右に並べて表示します。AIによる分析の揺らぎを確認したり、異なる観点からの要約を比較したりできます。
+- **多様なファイル形式に対応**:
+    - `.txt`, `.docx` (Word), `.md`, `.csv`, `.log` ファイルを直接読み込めます。
+- **データの利活用**:
+    - 分析結果を CSV 形式で保存。
+    - スプレッドシートや Excel に直接貼り付け可能な形式でクリップボードにコピー。
 
-### 1. 前提条件
-- [Google Cloud プロジェクト](https://console.cloud.google.com/)が作成されていること
-- [Google Cloud CLI (gcloud)](https://cloud.google.com/sdk/docs/install) がインストールされていること
+## 🛠️ 技術構成
 
-### 2. デプロイ手順
+- **フロントエンド**: HTML5, Tailwind CSS, JavaScript (Vanilla JS)
+- **AIエンジン**: Google Gemini API (`gemini-3-flash-preview` など)
+- **インフラ**: Google Cloud Run (Docker + Nginx)
 
-以下のコマンドを実行してデプロイします。
+## 📖 使い方
 
-```bash
-# プロジェクトIDの設定
-gcloud config set project [studious-lyceum-483104-u8] # <<< ご自身のプロジェクトIDに置き換えてください
+1. **APIキーの設定**:
+   - 右上の「設定」ボタンから、ご自身の Google Gemini API Key を入力して保存してください。
+2. **ファイルの読み込み**:
+   - 「ファイルを選択」ボタンから、文字起こしデータを選択します。
+3. **分析開始**:
+   - 「分析開始 (2回並列)」ボタンをクリックします。
+4. **結果の確認・出力**:
+   - 左右のカラムに表示された結果を確認し、必要に応じて「CSV保存」や「コピー」を行ってください。
 
-# Cloud Run へのデプロイ
-gcloud run deploy psychiatric-analyzer \
-  --source . \
-  --platform managed \
-  --region asia-northeast1 \
-  --allow-unauthenticated
-```
+## 🔒 セキュリティとプライバシー
 
-デプロイが完了すると、サービスにアクセスするための URL が表示されます。
+- 入力された API Key はブラウザの `localStorage` にのみ保存され、開発者サーバーや第三者に送信されることはありません。
+- 文字起こしデータは、ブラウザから Google Gemini API に直接送信され、分析に使用されます。
 
-### 3. ローカルでの実行（確認用）
+## 📄 ライセンス
 
-Docker を使用してローカルで動作確認を行う場合は以下の通りです。
+このプロジェクトは医療現場での活用を支援するために開発されました。
 
-```bash
-# イメージのビルド
-docker build -t psychiatric-analyzer .
-
-# コンテナの起動
-docker run -p 8080:8080 psychiatric-analyzer
-```
-ブラウザで `http://localhost:8080` にアクセスしてください。
-
+---
+*本ツールは分析を補助するものであり、医学的診断や評価を代替するものではありません。*

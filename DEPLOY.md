@@ -23,15 +23,16 @@ gcloud artifacts repositories create cloud-run-source-deploy \
 
 ### 2. Cloud Build を使用したデプロイ
 
-以下のコマンドを実行することで、イメージのビルド、プッシュ、Cloud Run へのデプロイが自動的に行われます。
+Cloud Build を使用してビルドとデプロイを行います。
+※ 初回実行時に権限エラー（403 Forbidden）が出る場合は、[方法3] の直接デプロイを試すか、Cloud Build サービスアカウントにストレージの権限を付与してください。
 
 ```bash
 gcloud builds submit --config cloudbuild.yaml --substitutions=REPO_NAME=psychiatric-transcript-analyzer
 ```
 
-### 3. (オプション) 直接デプロイする場合
+### 3. 直接ソースからデプロイする場合（推奨）
 
-Cloud Build を使わずにローカルから直接デプロイすることも可能です。
+Cloud Build の権限設定をスキップして、最も簡単にデプロイする方法です。
 
 ```bash
 gcloud run deploy psychiatric-transcript-analyzer \
