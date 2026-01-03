@@ -1,0 +1,30 @@
+steps:
+  # Dockerイメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_GCR_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$REPO_NAME:$COMMIT_SHA', '.']
+
+  # イメージをArtifact Registryにプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_GCR_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$REPO_NAME:$COMMIT_SHA']
+
+  # Cloud Runにデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'psychiatric-transcript-analyzer'
+      - '--image'
+      - '$_GCR_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$REPO_NAME:$COMMIT_SHA'
+      - '--region'
+      - '$_GCR_REGION'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+
+images:
+  - '$_GCR_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/$REPO_NAME:$COMMIT_SHA'
+
+substitutions:
+  _GCR_REGION: asia-northeast1
+  _REPOSITORY: cloud-run-source-deploy
