@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>精神科文字起こし分析ツール (Gemini)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Wordファイル読み込み用ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        /* テーブルのスタイル調整 */
+        .result-table th { background-color: #f3f4f6; position: sticky; top: 0; z-index: 10; }
+        .result-table td { vertical-align: middle; } /* 上下中央揃えに変更 */
+        /* 読み込み中のスピナー */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* トースト通知 */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 50px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- ヘッダー -->
+    <header class="bg-white shadow-sm z-20 flex-none">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-lg">
+                    <i class="fa-solid fa-file-medical-alt"></i>
+                </div>
+                <h1 class="text-xl font-bold text-slate-700">精神科文字起こし分析ツール</h1>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openSettings()" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">
+                    <i class="fa-solid fa-gear"></i> 設定 (API Key)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-1 flex overflow-hidden max-w-7xl mx-auto w-full p-4 gap-4">
+        
+        <!-- 左側: 入力エリア -->
+        <div class="w-1/3 flex flex-col gap-2 bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+            <div class="flex justify-between items-end mb-1">
+                <label class="font-bold text-slate-700 flex items-center">
+                    <i class="fa-solid fa-pen-to-square mr-1"></i> 文字起こし入力
+                </label>
+                <!-- ファイルアップロードボタン -->
+                <div class="relative group">
+                    <input type="file" id="fileInput" accept=".txt,.csv,.md,.log,.docx" class="hidden" onchange="handleFileUpload(event)">
+                    <label for="fileInput" class="cursor-pointer text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition flex items-center gap-1">
+                        <i class="fa-solid fa-upload"></i> ファイル読込
+                    </label>
+                    <!-- ツールチップ -->
+                    <div class="absolute bottom-full right-0 mb-2 w-48 bg-gray-800 text-white text-xs rounded py-1 px-2 hidden group-hover:block z-50 shadow-lg text-center">
+                        対応: .txt, .docx (Word), .md
+                    </div>
+                </div>
+            </div>
+            
+            <textarea id="transcriptInput" class="flex-1 w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none font-mono text-sm leading-normal" placeholder="テキストを貼り付けるか、右上のボタンからファイルを読み込んでください...&#13;&#10;(例)&#13;&#10;日付: 11月29日&#13;&#10;医師: 今日はどうされましたか？&#13;&#10;患者: 其实最近眠れなくて..."></textarea>
+            
+            <div class="text-xs text-slate-500 mb-2 truncate" id="fileNameDisplay"></div>
+
+            <button id="analyzeBtn" onclick="analyzeTranscript()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition flex justify-center items-center gap-2">
+                <i class="fa-solid fa-magnifying-glass"></i> 分析開始
+            </button>
+        </div>
+
+        <!-- 右側: 結果エリア -->
+        <div class="w-2/3 flex flex-col gap-2 bg-white rounded-xl shadow-sm border border-slate-200 p-4 relative">
+            <div class="flex justify-between items-center mb-2">
+                <label class="font-bold text-slate-700"><i class="fa-solid fa-table-list mr-1"></i> 分析結果</label>
+                <div class="flex gap-2" id="actionButtons">
+                    <!-- アクションボタン群 (初期は非表示) -->
+                    <button onclick="copyForSpreadsheet()" id="copyBtn" class="hidden px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 text-green-800 border border-green-200 rounded shadow-sm transition flex items-center gap-2" title="スプレッドシートに貼り付けられる形式でコピー">
+                        <i class="fa-regular fa-copy"></i> シート用にコピー
+                    </button>
+                    <button onclick="downloadCSV()" id="downloadBtn" class="hidden px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded shadow-sm transition flex items-center gap-2">
+                        <i class="fa-solid fa-download"></i> CSV保存
+                    </button>
+                </div>
+            </div>
+
+            <!-- 結果表示部 -->
+            <div id="resultContainer" class="flex-1 overflow-auto border border-slate-200 rounded-lg bg-slate-50 relative">
+                <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
+                    <i class="fa-regular fa-clipboard text-4xl mb-2"></i>
+                    <p>左側のフォームにテキストを入力して<br>分析を開始してください</p>
+                </div>
+                
+                <div id="loadingState" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10">
+                    <div class="loader mb-2"></div>
+                    <p class="text-blue-600 font-medium animate-pulse">Geminiが文字起こしを分析中...</p>
+                </div>
+
+                <div id="tableWrapper" class="hidden w-full h-full">
+                    <table class="w-full text-sm text-left result-table border-collapse">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-100 border-b">
+                            <tr>
+                                <th class="px-4 py-2 border-r w-24">日付</th>
+                                <th class="px-4 py-2 border-r w-20">No.</th>
+                                <th class="px-4 py-2 border-r w-24">種別</th>
+                                <th class="px-4 py-2 border-r w-1/3">会話（抜粋）</th>
+                                <th class="px-4 py-2">要約</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultBody" class="bg-white divide-y divide-slate-200">
+                            <!-- 結果行がここに挿入されます -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- ステータスバー -->
+            <div class="text-xs text-slate-500 mt-1 flex justify-between">
+                <span id="modelDisplay">Model: 未設定</span>
+                <span id="statusMessage">待機中</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- トースト通知 -->
+    <div id="toast">クリップボードにコピーしました。<br>スプレッドシートで「貼り付け」してください。</div>
+
+    <!-- 設定モーダル -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md transform transition-all">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2 text-slate-700">
+                <i class="fa-solid fa-sliders"></i> 設定
+            </h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Google Gemini API Key</label>
+                    <input type="password" id="apiKeyInput" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" placeholder="AIzaSy...">
+                    <p class="text-xs text-slate-500 mt-1">※キーはブラウザ内にのみ一時保存され、外部には送信されません。</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">使用モデル (Model ID)</label>
+                    <input type="text" id="modelInput" value="gemini-3-flash-preview" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                    <p class="text-xs text-slate-500 mt-1">
+                        デフォルト: <code>gemini-3-flash-preview</code><br>
+                        他: <code>gemini-2.0-flash-exp</code>, <code>gemini-1.5-flash</code> など
+                    </p>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+                <button onclick="closeSettings()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">キャンセル</button>
+                <button onclick="saveSettings()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 設定管理 ---
+        let apiKey = localStorage.getItem('gemini_api_key') || '';
+        let modelId = localStorage.getItem('gemini_model_id') || 'gemini-3-flash-preview'; 
+        let currentFileName = ""; // アップロードされたファイル名を保持
+        
+        // ユーザー指定のプロンプト
+        const SYSTEM_PROMPT = `
+# 役割
+
+あなたは、臨床面談やカウンセリングの文字起こしデータ（逐語録）を分析する専門的なアシスタントです。
+
+# 目的
+
+入力された精神科外来の診察記録（文字起こし）を分析し、以下の定義に基づく「注目すべき会話パターン」を特定してください。
+
+特定した結果は、指定された出力形式（5列の表）で報告してください。
+
+# 分析の定義
+
+以下の2つのパターンに該当する箇所を特定してください。
+
+1.  **会話ラリー（議論・やり取り）**
+
+      - **定義**: 医師と患者が、比較的短い発言（例：1〜3文程度）を**連続して5往復以上（合計10ターン以上）**活発に交換している箇所。
+      - **除外**: 単純な相槌（「はい」「ええ」「うーん」）のみのやり取りはカウントしません。
+
+2.  **患者の長い発話（モノローグ）**
+
+      - **定義**: 医師からの短い相槌や最小限の質問（例：「それで？」「他には？」）を挟むだけで、患者が実質的に連続して5文以上（または目安として150文字以上）一人で話し続けている箇所。
+
+# 出力形式
+
+特定したすべての該当箇所を、以下の5つの列を持つ表形式（マークダウン形式の表）で出力してください。
+**マークダウンの表形式以外（冒頭の挨拶や説明など）は一切出力しないでください。**
+
+該当箇所がない場合は、表の中に「該当なし」と記述してください。
+
+| 日付 | 受付番号 | 種別 | 実際の会話（抜粋） | 内容の要約 |
+| :--- | :--- | :--- | :--- | :--- |
+| 2025/12/27 | 6 | ラリー | 医師:〜<br>患者:〜 | 【タイトル】要約内容 |
+
+**列の詳細指示:**
+- **日付**: 入力されたテキストの冒頭にある「ファイル名」またはテキスト内の情報から日付を特定し、**YYYY/MM/DD形式**（例: 2025/12/27）で出力してください。ファイル名が日付形式を含まない場合（例: data.txt）は、ファイル名をそのまま記述してください。
+- **受付番号**: 「番」や「の方」などの接尾辞は一切付けず、**半角数字のみ**（例：6, 15）。不明な場合は空欄。
+- **種別**: 「ラリー」または「モノローグ」。
+- **実際の会話（抜粋）**: 「患者:」「医師:」を付け、文脈が通じる範囲で記述。
+- **内容の要約**: **【要約タイトル】詳細な説明** の形式。
+
+# 制約事項
+
+  - 文字起こしのテキストのみに基づいて、上記の定義に合致する箇所を客観的に分析してください。
+  - 医学的な解釈、診断、評価は一切行わないでください。
+  - 「実際の会話（抜粋）」は、分析の根拠となる具体的なテキストをそのまま引用してください。
+`;
+
+        // 初期表示更新
+        updateStatusDisplay();
+
+        function openSettings() {
+            document.getElementById('apiKeyInput').value = apiKey;
+            document.getElementById('modelInput').value = modelId;
+            document.getElementById('settingsModal').classList.remove('hidden');
+            document.getElementById('settingsModal').classList.add('flex');
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+            document.getElementById('settingsModal').classList.remove('flex');
+        }
+
+        function saveSettings() {
+            apiKey = document.getElementById('apiKeyInput').value.trim();
+            modelId = document.getElementById('modelInput').value.trim();
+            
+            localStorage.setItem('gemini_api_key', apiKey);
+            localStorage.setItem('gemini_model_id', modelId);
+            
+            updateStatusDisplay();
+            closeSettings();
+        }
+
+        function updateStatusDisplay() {
+            document.getElementById('modelDisplay').innerText = `Model: ${modelId}`;
+        }
+
+        // --- ファイルアップロード処理 ---
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            currentFileName = file.name; // ファイル名を保存
+            document.getElementById('fileNameDisplay').innerText = `読み込みファイル: ${currentFileName}`;
+            
+            const filename = file.name.toLowerCase();
+            const textarea = document.getElementById('transcriptInput');
+            
+            // Wordファイル (.docx) の場合
+            if (filename.endsWith('.docx')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                        .then(function(result) {
+                            textarea.value = result.value;
+                            if (result.messages && result.messages.length > 0) {
+                                console.log("Word read warnings:", result.messages);
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error(err);
+                            alert("Wordファイルの読み込みに失敗しました。");
+                        });
+                };
+                reader.onerror = function() {
+                    alert("ファイルの読み込みエラーが発生しました。");
+                };
+                reader.readAsArrayBuffer(file);
+            } 
+            // テキスト系ファイルの場合 (.txt, .md, .csv, .log など)
+            else {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    textarea.value = e.target.result;
+                };
+                reader.onerror = function() {
+                    alert("ファイルの読み込みに失敗しました。");
+                };
+                reader.readAsText(file);
+            }
+
+            // 同じファイルを再度選べるようにリセット
+            event.target.value = '';
+        }
+
+        // --- 分析ロジック ---
+        let currentResults = []; // CSV出力用にデータを保持
+
+        async function analyzeTranscript() {
+            const rawText = document.getElementById('transcriptInput').value.trim();
+            
+            if (!apiKey) {
+                alert('設定ボタンからAPIキーを設定してください。');
+                openSettings();
+                return;
+            }
+            if (!rawText) {
+                alert('文字起こしテキストを入力してください。');
+                return;
+            }
+
+            // ファイル名情報をテキストに付加してAIに渡す
+            const textToAnalyze = `【分析対象ファイル名】: ${currentFileName || "不明"}\n\n${rawText}`;
+
+            // UIリセット
+            const btn = document.getElementById('analyzeBtn');
+            const loading = document.getElementById('loadingState');
+            const empty = document.getElementById('emptyState');
+            const tableWrapper = document.getElementById('tableWrapper');
+            const status = document.getElementById('statusMessage');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            loading.classList.remove('hidden');
+            empty.classList.add('hidden');
+            tableWrapper.classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            document.getElementById('copyBtn').classList.add('hidden');
+            status.innerText = "分析中...";
+            
+            try {
+                // Gemini API Call
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{
+                        parts: [{ text: textToAnalyze }]
+                    }],
+                    systemInstruction: {
+                        parts: [{ text: SYSTEM_PROMPT }]
+                    },
+                    generationConfig: {
+                        temperature: 0.2, // 分析タスクなので創造性を抑える
+                    }
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || 'API Error');
+                }
+
+                const data = await response.json();
+                const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!resultText) throw new Error("結果を取得できませんでした。");
+
+                // Markdownテーブルをパース
+                currentResults = parseMarkdownTable(resultText);
+                
+                // テーブル描画
+                renderTable(currentResults);
+                
+                // 完了状態へ
+                loading.classList.add('hidden');
+                tableWrapper.classList.remove('hidden');
+                document.getElementById('downloadBtn').classList.remove('hidden');
+                document.getElementById('copyBtn').classList.remove('hidden');
+                status.innerText = "分析完了";
+
+            } catch (error) {
+                console.error(error);
+                alert('エラーが発生しました: ' + error.message);
+                status.innerText = "エラー発生";
+                loading.classList.add('hidden');
+                empty.classList.remove('hidden'); // エラー時は空状態に戻す
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // MarkdownテーブルをJSON配列に変換する簡易パーサー
+        function parseMarkdownTable(mdText) {
+            const lines = mdText.split('\n');
+            const data = [];
+            let inTable = false;
+
+            for (let line of lines) {
+                line = line.trim();
+                // パイプで始まりパイプで終わる行をテーブル行とみなす
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    // ヘッダー区切り行（---|---）はスキップ
+                    if (line.includes('---')) continue;
+                    
+                    // セルの中身を抽出
+                    const cells = line.split('|').slice(1, -1).map(c => c.trim());
+                    
+                    // ヘッダー行判定（最初の行をヘッダーと仮定、または列名で判定）
+                    if (cells[0] === '日付' || cells[0] === '**日付**') continue;
+
+                    if (cells.length >= 5) {
+                        data.push({
+                            date: cells[0],
+                            id: cells[1],
+                            type: cells[2],
+                            conversation: cells[3].replace(/<br>/g, '\n'), // HTML改行を戻す
+                            summary: cells[4].replace(/<br>/g, '\n')
+                        });
+                    }
+                }
+            }
+            return data;
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('resultBody');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">該当する会話パターンは見つかりませんでした。</td></tr>';
+                return;
+            }
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+                
+                // 表示用に<br>をスペース等に置換してツールチップに設定
+                const rawConv = row.conversation.replace(/<br>/g, '\n');
+                const rawSum = row.summary.replace(/<br>/g, '\n');
+
+                tr.innerHTML = `
+                    <td class="px-4 py-2 border-r border-slate-100 text-slate-600 font-medium whitespace-nowrap leading-tight">${row.date}</td>
+                    <td class="px-4 py-2 border-r border-slate-100 text-slate-600 leading-tight">${row.id}</td>
+                    <td class="px-4 py-2 border-r border-slate-100">
+                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full 
+                            ${row.type.includes('ラリー') ? 'bg-orange-100 text-orange-800' : 'bg-purple-100 text-purple-800'}">
+                            ${row.type}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 border-r border-slate-100 text-slate-700 text-xs leading-tight max-w-xs truncate" title="${rawConv}">${row.conversation}</td>
+                    <td class="px-4 py-2 text-slate-700 text-sm leading-tight max-w-sm truncate" title="${rawSum}">${row.summary}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // CSVダウンロード (BOM付きUTF-8)
+        function downloadCSV() {
+            if (currentResults.length === 0) return;
+
+            let csvContent = "日付,受付番号,種別,実際の会話（抜粋）,内容の要約\n";
+
+            currentResults.forEach(row => {
+                const escape = (text) => `"${(text || '').replace(/"/g, '""')}"`;
+                
+                const line = [
+                    escape(row.date),
+                    escape(row.id),
+                    escape(row.type),
+                    escape(row.conversation),
+                    escape(row.summary)
+                ].join(",");
+                
+                csvContent += line + "\n";
+            });
+
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+            link.setAttribute("download", `analysis_result_${timestamp}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // スプレッドシート用にコピー (TSV形式) - フォールバック機能付き
+        function copyForSpreadsheet() {
+            if (currentResults.length === 0) return;
+
+            // TSVヘッダー
+            let tsvContent = "日付\t受付番号\t種別\t実際の会話（抜粋）\t内容の要約\n";
+
+            currentResults.forEach(row => {
+                const escape = (text) => `"${(text || '').replace(/"/g, '""')}"`;
+
+                const line = [
+                    escape(row.date),
+                    escape(row.id),
+                    escape(row.type),
+                    escape(row.conversation),
+                    escape(row.summary)
+                ].join("\t");
+                
+                tsvContent += line + "\n";
+            });
+
+            // 1. まずモダンAPIを試す
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(tsvContent).then(() => {
+                    showToast();
+                }).catch(err => {
+                    // 2. 権限エラー等で失敗したらレガシーな方法へフォールバック
+                    console.warn('Clipboard API blocked, falling back to execCommand:', err);
+                    fallbackCopyTextToClipboard(tsvContent);
+                });
+            } else {
+                // Clipboard APIがない場合
+                fallbackCopyTextToClipboard(tsvContent);
+            }
+        }
+
+        // レガシーなコピー方法 (execCommandを使用)
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // 画面外に配置して見えないようにするが、フォーカス可能にする必要がある
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showToast();
+                } else {
+                    alert('コピーに失敗しました。');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('コピーに失敗しました。');
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function showToast() {
+            const toast = document.getElementById("toast");
+            toast.className = "show";
+            setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 4000);
+        }
+    </script>
+</body>
+</html>
