@@ -1,6 +1,6 @@
-# 精神科文字起こし分析ツール (Psychiatric Transcript Analyzer)
+# 診察文字起こし分析ツール (Transcript Analyzer)
 
-精神科の外来診療やカウンセリングの文字起こし（逐語録）を、Google Gemini API を活用して迅速かつ客観的に分析するためのツールです。臨床現場での振り返りや、記録作成の補助を目的としています。
+診察外来やカウンセリングの文字起こしデータ（逐語録）を、Google Gemini API を活用して迅速かつ客観的に分析するためのツールです。臨床現場での振り返りや、記録作成の補助を目的としています。
 
 ## 🚀 主な機能
 
@@ -20,6 +20,7 @@
 - **フロントエンド**: HTML5, Tailwind CSS, JavaScript (Vanilla JS)
 - **AIエンジン**: Google Gemini API (`gemini-3-flash-preview` など)
 - **インフラ**: Google Cloud Run (Docker + Nginx)
+- **CI/CD**: GitHub + Google Cloud Build
 
 ## 📖 使い方
 
