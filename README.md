@@ -9,6 +9,10 @@
     - **患者の長い発話（モノローグ）**: 患者が実質的に連続して長く（目安として150文字以上、または5文以上）話し続けている箇所を特定します。
 - **2つの分析結果を並列表示**: 
     - 一度の実行で2つの分析処理を並列で行い、結果を左右に並べて表示します。AIによる分析の揺らぎを確認したり、異なる観点からの要約を比較したりできます。
+- **柔軟なモデル選択**:
+    - 用途に合わせて `gemini-3-flash-preview`（高速・低コスト）と `gemini-3-pro-preview`（高精度）を選択可能です。
+- **柔軟なデータ対応**:
+    - 受付番号が含まれていないトランスクリプト（患者名のみなど）でも、会話パターンを基に分析を行います。
 - **多様なファイル形式に対応**:
     - `.txt`, `.docx` (Word), `.md`, `.csv`, `.log` ファイルを直接読み込めます。
 - **データの利活用**:
@@ -18,7 +22,7 @@
 ## 🛠️ 技術構成
 
 - **フロントエンド**: HTML5, Tailwind CSS, JavaScript (Vanilla JS)
-- **AIエンジン**: Google Gemini API (`gemini-3-flash-preview` など)
+- **AIエンジン**: Google Gemini API (`gemini-3-flash-preview` / `gemini-3-pro-preview`)
 - **インフラ**: Google Cloud Run (Docker + Nginx)
 - **CI/CD**: GitHub + Google Cloud Build
 
